@@ -40,16 +40,17 @@ object ApplicationModule {
         val dir = File(mContext.cacheDir,"Cache Response")
         val cache = Cache(dir,maxSize)
 
-        return OkHttpClient.Builder()
-            .cache(cache)
-            .addNetworkInterceptor {
-                val response = it.proceed(it.request())
+        val cacheNetworkInterceptor = object: Interceptor{
+            override fun intercept(chain: Interceptor.Chain): Response {
+                val response = chain.proceed(chain.request())
                 if(NetworkHelper.isNetworkConnected(mContext)){
                     //read from cache for 60 seconds
                     val cacheControl = CacheControl.Builder()
                         .maxAge(60,TimeUnit.SECONDS)
                         .build()
-                    response.newBuilder()
+                    return response.newBuilder()
+                        .removeHeader("Pragma")
+                        .removeHeader("Cache-Control")
                         .header("Cache-Control",cacheControl.toString())
                         .build()
                 }else {
@@ -57,12 +58,20 @@ object ApplicationModule {
                     val cacheControl = CacheControl.Builder()
                         .maxStale(10,TimeUnit.DAYS)
                         .build()
-                    response.newBuilder()
-                        .header("Cache-Control",cacheControl.toString())
+                    return response.newBuilder()
+                        .removeHeader("Pragma")
+                        .removeHeader("Cache-Control")
+                        .header("Cache-Control", cacheControl.toString())
                         .build()
                 }
             }
-            .build()
+
+        }
+
+        val okHttpClient = OkHttpClient.Builder()
+        okHttpClient.cache(cache)
+        okHttpClient.addNetworkInterceptor(cacheNetworkInterceptor)
+        return okHttpClient.build()
     }
     @Provides
     @Singleton
